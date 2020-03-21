@@ -6,12 +6,15 @@ class Player {
     this.immunity = immunity;
     this.tokens = tokens;
   }
+
+  equals(player) {
+    return this.user === player.user;
+  }
 }
 
 // Firestore data converter
 export const playerConverter = {
   toFirestore: function(player) {
-    debugger;
     return {
       user: player.user,
       card: player.card,
@@ -20,14 +23,13 @@ export const playerConverter = {
       tokens: player.tokens
     };
   },
-  fromFirestore: function(snapshot, options) {
-    const data = snapshot.data(options);
+  fromFirestore: function(firestorePlayer) {
     return new Player(
-      data.user,
-      data.card,
-      data.dead,
-      data.immunity,
-      data.tokens
+      firestorePlayer.user,
+      firestorePlayer.card,
+      firestorePlayer.dead,
+      firestorePlayer.immunity,
+      firestorePlayer.tokens
     );
   }
 };

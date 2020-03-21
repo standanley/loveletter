@@ -1,6 +1,7 @@
 import React from "react";
-// import Player, { playerConverter } from "./player.js";
-import firebase from "./firebase.js";
+import firebase from "./firebase";
+import Game, { gameConverter } from "./game";
+import Player from "./player";
 import "./App.css";
 
 class App extends React.Component {
@@ -8,7 +9,7 @@ class App extends React.Component {
     super(props);
     this.state = {
       game: null,
-      player: null,
+      player: null
     };
 
     this.enterGame = this.enterGame.bind(this);
@@ -23,6 +24,10 @@ class App extends React.Component {
     return { valid: name && key && user, name, key, user };
   }
 
+  startGame() {
+    this.state.game.start();
+  }
+
   enterGame(isNew = true) {
     const { valid, name, key, user } = this.validateGameForm();
     if (!valid) {
@@ -34,53 +39,61 @@ class App extends React.Component {
       .collection("games")
       .where("name", "==", name)
       .where("key", "==", key)
+      .withConverter(gameConverter)
       .get()
       .then(docs => {
-        debugger;
-        if (docs.size > 0 && isNew) {
-          alert("you tried to create a game that already exists!! oh nooooo");
-        } else if (docs.size === 0 && !isNew) {
-          alert("you tried to join a game that does not exist! oh nooooooo");
-        } else if (isNew) {
+        if (isNew) {
           // creating a game
+          if (!docs.empty) {
+            alert("you tried to create a game that already exists!! oh nooooo");
+            // would you like to join this game? yes no
+            return;
+          }
+          const player = new Player(user);
+          const game = new Game(name, key, [player]);
           this.firestore
             .collection("games")
-            .add({
-              key,
-              name,
-              inGame: false,
-              players: [{
-                user,
-                card: 0,
-                tokens: 0,
-                dead: false,
-                immunity: false,
-              }]
-            });
+            .withConverter(gameConverter)
+            .add(game);
+          this.setState({
+            game,
+            player
+          });
         } else {
           // joining an existing game
           const doc = docs.docs[0];
-
-          if (doc.data().inGame) {
+          if (!doc) {
+            alert("you tried to join a game that does not exist! oh nooooooo");
+            // would you like to create this game? yes no
+            return;
+          }
+          const game = doc.data();
+          if (game.inGame) {
             alert("in game already!!!");
             return;
           }
-
-          const currentPlayers = doc.data().players;
-          if (currentPlayers.length === 4) {
+          if (game.players.length === 4) {
             alert("max players reached!!!");
             return;
           }
 
-          const existingPlayer = currentPlayers.find(
-            player => player.user === user
-          );
-          if (existingPlayer) {
+          const newPlayer = new Player(user);
+          if (game.players.some(player => player.equals(newPlayer))) {
             alert("that user is taken!");
             return;
           }
 
-          //TODO: join logic
+          game.addPlayer(newPlayer);
+
+          this.firestore
+            .collection("games")
+            .doc(doc.id)
+            .withConverter(gameConverter)
+            .set(game);
+          this.setState({
+            game,
+            player: newPlayer
+          });
         }
       });
   }
@@ -115,7 +128,36 @@ class App extends React.Component {
         </div>
       );
     }
-    return <div></div>;
+    if (!this.state.game.inGame) {
+      return (
+        <div>
+          <header>
+            <h1>Welcome, {this.state.player.user}</h1>
+            <h2>
+              You are in the game <b>{this.state.game.name}</b>
+            </h2>
+            <h3>
+              Your game key is <b>{this.state.game.key}</b>
+            </h3>
+          </header>
+          <p>When all the expected players join, start the game below:</p>
+          <button onClick={this.startGame}>Start Game</button>
+        </div>
+      );
+    }
+    return (
+      <div>
+          <header>
+            <h1>Welcome, {this.state.player.user}</h1>
+            <h2>
+              You are in the game <b>{this.state.game.name}</b>
+            </h2>
+            <h3>
+              Your game key is <b>{this.state.game.key}</b>
+            </h3>
+          </header>
+        </div>
+    )
   }
 }
 
