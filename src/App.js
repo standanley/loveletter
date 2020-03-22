@@ -8,11 +8,14 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
+      docId: "",
       game: null,
-      player: null
+      player: null,
+      listener: null
     };
 
     this.enterGame = this.enterGame.bind(this);
+    this.startGame = this.startGame.bind(this);
 
     this.firestore = firebase.firestore();
   }
@@ -24,10 +27,38 @@ class App extends React.Component {
     return { valid: name && key && user, name, key, user };
   }
 
+  /**
+   * Starts the game by calling start method of the game and updating the game doc in the database
+   */
   startGame() {
     this.state.game.start();
+    this.firestore
+      .collection("games")
+      .doc(this.state.docId)
+      .withConverter(gameConverter)
+      .set(this.state.game);
   }
 
+  // end listening
+  endGame() {
+    this.state.listener();
+  }
+
+  setUpListeners() {
+    const listener = this.firestore
+        .collection("games")
+        .doc(this.state.docId)
+        .withConverter(gameConverter)
+        .onSnapshot(doc => {
+          this.setState({ game: doc.data() });
+        });
+    this.setState({ listener });
+  }
+
+  /**
+   * Enters a game by either creating one or joining one
+   * @param {Boolean} isNew whether to create a new game or to join an existing game
+   */
   enterGame(isNew = true) {
     const { valid, name, key, user } = this.validateGameForm();
     if (!valid) {
@@ -49,12 +80,17 @@ class App extends React.Component {
             // would you like to join this game? yes no
             return;
           }
+
           const player = new Player(user);
           const game = new Game(name, key, [player]);
           this.firestore
             .collection("games")
             .withConverter(gameConverter)
-            .add(game);
+            .add(game)
+            .then(docRef => {
+              this.setState({ docId: docRef.id });
+              this.setUpListeners();
+            });
           this.setState({
             game,
             player
@@ -91,9 +127,12 @@ class App extends React.Component {
             .withConverter(gameConverter)
             .set(game);
           this.setState({
+            docId: doc.id,
             game,
             player: newPlayer
           });
+
+          this.setUpListeners();
         }
       });
   }
@@ -141,23 +180,32 @@ class App extends React.Component {
             </h3>
           </header>
           <p>When all the expected players join, start the game below:</p>
+          <ul>
+            {this.state.game.players.map(player => {
+              return <li>{player.user}</li>;
+            })}
+          </ul>
           <button onClick={this.startGame}>Start Game</button>
         </div>
       );
     }
     return (
       <div>
-          <header>
-            <h1>Welcome, {this.state.player.user}</h1>
-            <h2>
-              You are in the game <b>{this.state.game.name}</b>
-            </h2>
-            <h3>
-              Your game key is <b>{this.state.game.key}</b>
-            </h3>
-          </header>
-        </div>
-    )
+        <header>
+          <h1>Welcome, {this.state.player.user}</h1>
+          <h2>
+            You are in the game <b>{this.state.game.name}</b>
+          </h2>
+          <h3>
+            Your game key is <b>{this.state.game.key}</b>
+          </h3>
+        </header>
+      </div>
+    );
+  }
+
+  componentWillUnmount() {
+    this.state.listener();
   }
 }
 
